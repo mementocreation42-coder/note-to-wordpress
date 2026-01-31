@@ -1,0 +1,115 @@
+[
+    {
+        "key": "group_media_metadata",
+        "title": "Media Metadata",
+        "fields": [
+            {
+                "key": "field_media_type",
+                "label": "Media Type",
+                "name": "media_type",
+                "type": "radio",
+                "instructions": "Is this a photo or a video?",
+                "required": 1,
+                "choices": {
+                    "image": "Image",
+                    "video": "Video"
+                },
+                "default_value": "image",
+                "layout": "horizontal"
+            },
+            {
+                "key": "field_cloudinary_id",
+                "label": "Cloudinary Public ID",
+                "name": "cloudinary_id",
+                "type": "text",
+                "instructions": "The ID from Cloudinary (e.g., 'folder/my-image'). Do NOT include file extension.",
+                "required": 1,
+                "placeholder": "sample_id"
+            },
+            {
+                "key": "field_media_width",
+                "label": "Width (px)",
+                "name": "media_width",
+                "type": "number",
+                "instructions": "Original width of the media (used for aspect ratio).",
+                "required": 1,
+                "default_value": 1920
+            },
+            {
+                "key": "field_media_height",
+                "label": "Height (px)",
+                "name": "media_height",
+                "type": "number",
+                "instructions": "Original height of the media.",
+                "required": 1,
+                "default_value": 1080
+            },
+            {
+                "key": "field_transcription",
+                "label": "Transcription / Emotion",
+                "name": "transcription",
+                "type": "textarea",
+                "instructions": "Optional: Spoken words or emotional context (appears as overlay).",
+                "required": 0,
+                "rows": 3
+            },
+            {
+                "key": "field_gallery",
+                "label": "Gallery (Carousel)",
+                "name": "gallery",
+                "type": "repeater",
+                "instructions": "Add extra images/videos for this post.",
+                "layout": "row",
+                "button_label": "Add Media",
+                "sub_fields": [
+                    {
+                        "key": "field_gallery_type",
+                        "label": "Type",
+                        "name": "type",
+                        "type": "select",
+                        "choices": {
+                            "image": "Image",
+                            "video": "Video"
+                        }
+                    },
+                    {
+                        "key": "field_gallery_src",
+                        "label": "Cloudinary ID",
+                        "name": "src",
+                        "type": "text"
+                    },
+                    {
+                        "key": "field_gallery_width",
+                        "label": "Width",
+                        "name": "width",
+                        "type": "number"
+                    },
+                    {
+                        "key": "field_gallery_height",
+                        "label": "Height",
+                        "name": "height",
+                        "type": "number"
+                    }
+                ]
+            }
+        ],
+        "location": [
+            [
+                {
+                    "param": "post_type",
+                    "operator": "==",
+                    "value": "post"
+                }
+            ]
+        ],
+        "menu_order": 0,
+        "position": "normal",
+        "style": "default",
+        "label_placement": "top",
+        "instruction_placement": "label",
+        "hide_on_screen": "",
+        "active": true,
+        "description": "Fields for the Headless Cloudinary Gallery",
+        "show_in_rest": true
+    }
+]
