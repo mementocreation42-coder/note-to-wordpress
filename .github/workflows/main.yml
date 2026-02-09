@@ -1,0 +1,24 @@
+name: Check Note and Post to WP
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+    - name: Install dependencies
+      run: npm install
+    - name: Run Automation Script
+      run: node index.js
+      env:
+        NOTE_ID: ${{ secrets.NOTE_ID }}
+        WP_URL: ${{ secrets.WP_URL }}
+        WP_USER: ${{ secrets.WP_USER }}
+        WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+        WP_CATEGORY_ID: ${{ secrets.WP_CATEGORY_ID }}
