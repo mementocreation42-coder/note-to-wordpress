@@ -22,3 +22,7 @@ jobs:
         WP_USER: ${{ secrets.WP_USER }}
         WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
         WP_CATEGORY_ID: ${{ secrets.WP_CATEGORY_ID }}
+        WP2_URL: ${{ secrets.WP2_URL }}
+        WP2_USER: ${{ secrets.WP2_USER }}
+        WP2_APP_PASSWORD: ${{ secrets.WP2_APP_PASSWORD }}
+        WP2_CATEGORY_ID: ${{ secrets.WP2_CATEGORY_ID }}
