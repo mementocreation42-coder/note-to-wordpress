@@ -6,23 +6,44 @@ const Parser = require('rss-parser');
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 const NOTE_ID = process.env.NOTE_ID;
-const WP_URL = process.env.WP_URL;
-const WP_USER = process.env.WP_USER;
-const WP_APP_PASSWORD = process.env.WP_APP_PASSWORD;
-const WP_CATEGORY_ID = process.env.WP_CATEGORY_ID;
+
+// Site configurations
+const sites = [];
+
+// Site 1 (Original)
+if (process.env.WP_URL) {
+    sites.push({
+        name: 'Site 1',
+        url: process.env.WP_URL,
+        user: process.env.WP_USER,
+        password: process.env.WP_APP_PASSWORD,
+        categoryId: process.env.WP_CATEGORY_ID
+    });
+}
+
+// Site 2 (New: shinealight.jp)
+if (process.env.WP2_URL) {
+    sites.push({
+        name: 'Site 2',
+        url: process.env.WP2_URL,
+        user: process.env.WP2_USER,
+        password: process.env.WP2_APP_PASSWORD,
+        categoryId: process.env.WP2_CATEGORY_ID
+    });
+}
 
 const parser = new Parser();
 
 async function run() {
     console.log('Starting Note to WordPress automation...');
 
-    if (!NOTE_ID || !WP_URL || !WP_USER || !WP_APP_PASSWORD) {
-        console.error('Missing required environment variables.');
+    if (!NOTE_ID || sites.length === 0) {
+        console.error('Missing required environment variables (NOTE_ID or WP sites).');
         process.exit(1);
     }
 
     try {
-        // 1. Fetch Note RSS using Axios for reliable User-Agent header
+        // 1. Fetch Note RSS
         const feedUrl = `https://note.com/${NOTE_ID}/rss`;
         console.log(`Fetching RSS from: ${feedUrl}`);
 
@@ -42,32 +63,8 @@ async function run() {
 
         const latestItem = feed.items[0];
         console.log(`Latest article: "${latestItem.title}"`);
-        console.log(`Link: ${latestItem.link}`);
 
-        // 2. Check for duplicates in WordPress
-        const token = Buffer.from(`${WP_USER}:${WP_APP_PASSWORD}`).toString('base64');
-        const searchUrl = `${WP_URL}/wp-json/wp/v2/posts`;
-
-        console.log('Checking for duplicates...');
-        const searchResponse = await axios.get(searchUrl, {
-            params: {
-                search: latestItem.title,
-                per_page: 5,
-                status: 'any'
-            },
-            headers: {
-                'Authorization': `Basic ${token}`,
-                'User-Agent': USER_AGENT
-            }
-        });
-
-        const existingPosts = searchResponse.data;
-        if (existingPosts.some(post => post.title.rendered === latestItem.title)) {
-            console.log(`Skip: Article "${latestItem.title}" already exists in WordPress.`);
-            return;
-        }
-
-        // 3. Fetch full article content from Note
+        // 2. Fetch full article content from Note once
         console.log('Fetching full article content...');
         const articleResponse = await axios.get(latestItem.link, {
             headers: {
@@ -76,14 +73,12 @@ async function run() {
         });
         const $ = cheerio.load(articleResponse.data);
 
-        // Extract article body - Note uses .note-common-styles__textnote-body or similar
         let contentForWp = '';
         const articleBody = $('.note-common-styles__textnote-body').first();
 
         if (articleBody.length) {
             articleBody.children().each((i, el) => {
                 const tag = el.tagName.toLowerCase();
-                // Clean HTML: Remove attributes to prevent Block Validation Errors
                 const innerHtml = $(el).html();
                 const cleanHtml = `<${tag}>${innerHtml}</${tag}>`;
 
@@ -106,41 +101,64 @@ async function run() {
                 }
             });
         } else {
-            // Fallback to RSS description
             contentForWp = `<!-- wp:paragraph -->\n<p>${latestItem.contentSnippet || latestItem.content || 'Content not available.'}</p>\n<!-- /wp:paragraph -->`;
         }
 
-        // 4. Prepare Data for WordPress
-        const wpPostData = {
-            title: latestItem.title,
-            content: contentForWp,
-            status: 'draft',
-        };
+        // 3. Loop through configured sites
+        for (const site of sites) {
+            console.log(`\nProcessing ${site.name}: ${site.url}`);
+            try {
+                const token = Buffer.from(`${site.user}:${site.password}`).toString('base64');
+                const searchUrl = `${site.url}/wp-json/wp/v2/posts`;
 
-        // Add category if defined
-        if (WP_CATEGORY_ID) {
-            wpPostData.categories = [parseInt(WP_CATEGORY_ID)];
-        }
+                // Check for duplicates
+                console.log(`[${site.name}] Checking for duplicates...`);
+                const searchResponse = await axios.get(searchUrl, {
+                    params: {
+                        search: latestItem.title,
+                        per_page: 5,
+                        status: 'any'
+                    },
+                    headers: {
+                        'Authorization': `Basic ${token}`,
+                        'User-Agent': USER_AGENT
+                    }
+                });
 
-        // 5. Post to WordPress
-        console.log('Posting to WordPress as draft...');
-        const postResponse = await axios.post(`${WP_URL}/wp-json/wp/v2/posts`, wpPostData, {
-            headers: {
-                'Authorization': `Basic ${token}`,
-                'Content-Type': 'application/json',
-                'User-Agent': USER_AGENT
+                const existingPosts = searchResponse.data;
+                if (existingPosts.some(post => post.title.rendered === latestItem.title)) {
+                    console.log(`[${site.name}] Skip: Article already exists.`);
+                    continue;
+                }
+
+                // Prepare and post
+                console.log(`[${site.name}] Posting as draft...`);
+                const wpPostData = {
+                    title: latestItem.title,
+                    content: contentForWp,
+                    status: 'draft',
+                };
+
+                if (site.categoryId) {
+                    wpPostData.categories = [parseInt(site.categoryId)];
+                }
+
+                const postResponse = await axios.post(`${site.url}/wp-json/wp/v2/posts`, wpPostData, {
+                    headers: {
+                        'Authorization': `Basic ${token}`,
+                        'Content-Type': 'application/json',
+                        'User-Agent': USER_AGENT
+                    }
+                });
+
+                console.log(`[${site.name}] Success! Draft created: ${postResponse.data.link}`);
+            } catch (siteError) {
+                console.error(`[${site.name}] Error: ${siteError.message}`);
             }
-        });
-
-        console.log(`Success! Draft created: ${postResponse.data.link}`);
-        console.log(`Post ID: ${postResponse.data.id}`);
+        }
 
     } catch (error) {
-        console.error('Error occurred:', error.message);
-        if (error.response) {
-            console.error('Response status:', error.response.status);
-            console.error('Response data:', JSON.stringify(error.response.data, null, 2));
-        }
+        console.error('Core error:', error.message);
         process.exit(1);
     }
 }
