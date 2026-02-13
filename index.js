@@ -135,18 +135,51 @@ async function run() {
                     console.log(`[${site.name}] No duplicate found. Proceeding with "${latestItem.title}"...`);
                 }
 
-                // Prepare and post
-                console.log(`[${site.name}] Posting as draft...`);
+                // Prepare post data
                 const wpPostData = {
                     title: latestItem.title,
                     content: contentForWp,
-                    status: 'draft',
+                    status: 'publish', // Auto-publish
                 };
 
+                // Categories
                 if (site.categoryId) {
                     wpPostData.categories = [parseInt(site.categoryId)];
                 }
 
+                // Handle Eyecatch Image
+                const ogImage = $('meta[property="og:image"]').attr('content');
+                if (ogImage) {
+                    console.log(`[${site.name}] Found eyecatch image: ${ogImage}`);
+                    try {
+                        // Fetch image data
+                        const imageResponse = await axios.get(ogImage, { responseType: 'arraybuffer' });
+                        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+                        const filename = `note-eyecatch-${Date.now()}.jpg`;
+
+                        // Upload to WordPress
+                        console.log(`[${site.name}] Uploading eyecatch image...`);
+                        const uploadResponse = await axios.post(`${site.url}/wp-json/wp/v2/media`, imageBuffer, {
+                            headers: {
+                                'Authorization': `Basic ${token}`,
+                                'Content-Type': 'image/jpeg',
+                                'Content-Disposition': `attachment; filename="${filename}"`,
+                                'User-Agent': USER_AGENT
+                            }
+                        });
+
+                        const mediaId = uploadResponse.data.id;
+                        console.log(`[${site.name}] Image uploaded successfully (Media ID: ${mediaId})`);
+                        wpPostData.featured_media = mediaId;
+
+                    } catch (imageError) {
+                        console.error(`[${site.name}] Failed to upload eyecatch image: ${imageError.message}`);
+                        // Proceed without featured image
+                    }
+                }
+
+                // Create Post
+                console.log(`[${site.name}] Creating post (Status: publish)...`);
                 const postResponse = await axios.post(`${site.url}/wp-json/wp/v2/posts`, wpPostData, {
                     headers: {
                         'Authorization': `Basic ${token}`,
@@ -155,9 +188,12 @@ async function run() {
                     }
                 });
 
-                console.log(`[${site.name}] Success! Draft created: ${postResponse.data.link}`);
+                console.log(`[${site.name}] Success! Post published: ${postResponse.data.link}`);
             } catch (siteError) {
                 console.error(`[${site.name}] Error: ${siteError.message}`);
+                if (siteError.response) {
+                    console.error(`[${site.name}] Error Details:`, JSON.stringify(siteError.response.data, null, 2));
+                }
             }
         }
 
