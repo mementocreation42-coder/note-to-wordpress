@@ -126,9 +126,13 @@ async function run() {
                 });
 
                 const existingPosts = searchResponse.data;
-                if (existingPosts.some(post => post.title.rendered === latestItem.title)) {
-                    console.log(`[${site.name}] Skip: Article already exists.`);
+                const duplicatePost = existingPosts.find(post => post.title.rendered === latestItem.title);
+                
+                if (duplicatePost) {
+                    console.log(`[${site.name}] Skip: Article "${latestItem.title}" already exists (ID: ${duplicatePost.id}).`);
                     continue;
+                } else {
+                    console.log(`[${site.name}] No duplicate found. Proceeding with "${latestItem.title}"...`);
                 }
 
                 // Prepare and post
