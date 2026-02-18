@@ -109,7 +109,18 @@ async function run() {
             console.log(`\nProcessing ${site.name}: ${site.url}`);
             try {
                 const token = Buffer.from(`${site.user}:${site.password}`).toString('base64');
-                const searchUrl = `${site.url}/wp-json/wp/v2/posts`;
+                
+                // Helper to build the correct API URL
+                const getApiUrl = (baseUrl, endpoint) => {
+                    const base = baseUrl.replace(/\/$/, '');
+                    if (base.includes('index.php?rest_route=')) {
+                        return `${base}${endpoint}`;
+                    }
+                    // Default to pretty permalinks but allow fallback or specific markers
+                    return `${base}/wp-json${endpoint}`;
+                };
+
+                const searchUrl = getApiUrl(site.url, '/wp/v2/posts');
 
                 // Check for duplicates
                 console.log(`[${site.name}] Checking for duplicates...`);
@@ -126,7 +137,7 @@ async function run() {
                 });
 
                 const existingPosts = searchResponse.data;
-                const duplicatePost = existingPosts.find(post => post.title.rendered === latestItem.title);
+                const duplicatePost = Array.isArray(existingPosts) ? existingPosts.find(post => post.title.rendered === latestItem.title) : null;
                 
                 if (duplicatePost) {
                     console.log(`[${site.name}] Skip: Article "${latestItem.title}" already exists (ID: ${duplicatePost.id}).`);
@@ -159,7 +170,7 @@ async function run() {
 
                         // Upload to WordPress
                         console.log(`[${site.name}] Uploading eyecatch image...`);
-                        const uploadResponse = await axios.post(`${site.url}/wp-json/wp/v2/media`, imageBuffer, {
+                        const uploadResponse = await axios.post(getApiUrl(site.url, '/wp/v2/media'), imageBuffer, {
                             headers: {
                                 'Authorization': `Basic ${token}`,
                                 'Content-Type': 'image/jpeg',
@@ -180,7 +191,7 @@ async function run() {
 
                 // Create Post
                 console.log(`[${site.name}] Creating post (Status: publish)...`);
-                const postResponse = await axios.post(`${site.url}/wp-json/wp/v2/posts`, wpPostData, {
+                const postResponse = await axios.post(getApiUrl(site.url, '/wp/v2/posts'), wpPostData, {
                     headers: {
                         'Authorization': `Basic ${token}`,
                         'Content-Type': 'application/json',
