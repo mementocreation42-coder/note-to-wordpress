@@ -56,154 +56,154 @@ async function run() {
 
         const feed = await parser.parseString(rssResponse.data);
 
-        if (!feed.items || feed.items.length === 0) {
-            console.log('No articles found in the RSS feed.');
-            return;
-        }
+        const maxItems = Math.min(feed.items.length, 5);
+        console.log(`Found ${feed.items.length} articles. Processing latest ${maxItems}...`);
 
-        const latestItem = feed.items[0];
-        console.log(`Latest article: "${latestItem.title}"`);
+        for (let itemIndex = 0; itemIndex < maxItems; itemIndex++) {
+            const latestItem = feed.items[itemIndex];
+            console.log(`\n=== [${itemIndex + 1}/${maxItems}] Processing: "${latestItem.title}" ===`);
 
-        // 2. Fetch full article content from Note once
-        console.log('Fetching full article content...');
-        const articleResponse = await axios.get(latestItem.link, {
-            headers: {
-                'User-Agent': USER_AGENT
-            }
-        });
-        const $ = cheerio.load(articleResponse.data);
-
-        let contentForWp = '';
-        const articleBody = $('.note-common-styles__textnote-body').first();
-
-        if (articleBody.length) {
-            articleBody.children().each((i, el) => {
-                const tag = el.tagName.toLowerCase();
-                const innerHtml = $(el).html();
-                const cleanHtml = `<${tag}>${innerHtml}</${tag}>`;
-
-                if (tag === 'p') {
-                    contentForWp += `<!-- wp:paragraph -->\n${cleanHtml}\n<!-- /wp:paragraph -->\n\n`;
-                } else if (tag === 'h2' || tag === 'h3' || tag === 'h4') {
-                    const level = tag.charAt(1);
-                    contentForWp += `<!-- wp:heading {"level":${level}} -->\n${cleanHtml}\n<!-- /wp:heading -->\n\n`;
-                } else if (tag === 'figure') {
-                    const img = $(el).find('img');
-                    if (img.length) {
-                        const src = img.attr('src') || '';
-                        const alt = img.attr('alt') || '';
-                        contentForWp += `<!-- wp:image -->\n<figure class="wp-block-image"><img src="${src}" alt="${alt}"/></figure>\n<!-- /wp:image -->\n\n`;
-                    }
-                } else if (tag === 'blockquote') {
-                    contentForWp += `<!-- wp:quote -->\n<blockquote class="wp-block-quote">${innerHtml}</blockquote>\n<!-- /wp:quote -->\n\n`;
-                } else {
-                    contentForWp += `<!-- wp:paragraph -->\n${cleanHtml}\n<!-- /wp:paragraph -->\n\n`;
+            // 2. Fetch full article content from Note
+            console.log('Fetching full article content...');
+            const articleResponse = await axios.get(latestItem.link, {
+                headers: {
+                    'User-Agent': USER_AGENT
                 }
             });
-        } else {
-            contentForWp = `<!-- wp:paragraph -->\n<p>${latestItem.contentSnippet || latestItem.content || 'Content not available.'}</p>\n<!-- /wp:paragraph -->`;
-        }
+            const $ = cheerio.load(articleResponse.data);
 
-        // 3. Loop through configured sites
-        for (const site of sites) {
-            console.log(`\nProcessing ${site.name}: ${site.url}`);
-            try {
-                const token = Buffer.from(`${site.user}:${site.password}`).toString('base64');
-                
-                // Helper to build the correct API URL
-                const getApiUrl = (baseUrl, endpoint) => {
-                    const base = baseUrl.replace(/\/$/, '');
-                    if (base.includes('index.php?rest_route=')) {
-                        return `${base}${endpoint}`;
-                    }
-                    // Default to pretty permalinks but allow fallback or specific markers
-                    return `${base}/wp-json${endpoint}`;
-                };
+            let contentForWp = '';
+            const articleBody = $('.note-common-styles__textnote-body').first();
 
-                const searchUrl = getApiUrl(site.url, '/wp/v2/posts');
+            if (articleBody.length) {
+                articleBody.children().each((i, el) => {
+                    const tag = el.tagName.toLowerCase();
+                    const innerHtml = $(el).html();
+                    const cleanHtml = `<${tag}>${innerHtml}</${tag}>`;
 
-                // Check for duplicates
-                console.log(`[${site.name}] Checking for duplicates...`);
-                const searchResponse = await axios.get(searchUrl, {
-                    params: {
-                        search: latestItem.title,
-                        per_page: 5,
-                        status: 'any'
-                    },
-                    headers: {
-                        'Authorization': `Basic ${token}`,
-                        'User-Agent': USER_AGENT
+                    if (tag === 'p') {
+                        contentForWp += `<!-- wp:paragraph -->\n${cleanHtml}\n<!-- /wp:paragraph -->\n\n`;
+                    } else if (tag === 'h2' || tag === 'h3' || tag === 'h4') {
+                        const level = tag.charAt(1);
+                        contentForWp += `<!-- wp:heading {"level":${level}} -->\n${cleanHtml}\n<!-- /wp:heading -->\n\n`;
+                    } else if (tag === 'figure') {
+                        const img = $(el).find('img');
+                        if (img.length) {
+                            const src = img.attr('src') || '';
+                            const alt = img.attr('alt') || '';
+                            contentForWp += `<!-- wp:image -->\n<figure class="wp-block-image"><img src="${src}" alt="${alt}"/></figure>\n<!-- /wp:image -->\n\n`;
+                        }
+                    } else if (tag === 'blockquote') {
+                        contentForWp += `<!-- wp:quote -->\n<blockquote class="wp-block-quote">${innerHtml}</blockquote>\n<!-- /wp:quote -->\n\n`;
+                    } else {
+                        contentForWp += `<!-- wp:paragraph -->\n${cleanHtml}\n<!-- /wp:paragraph -->\n\n`;
                     }
                 });
+            } else {
+                contentForWp = `<!-- wp:paragraph -->\n<p>${latestItem.contentSnippet || latestItem.content || 'Content not available.'}</p>\n<!-- /wp:paragraph -->`;
+            }
 
-                const existingPosts = searchResponse.data;
-                const duplicatePost = Array.isArray(existingPosts) ? existingPosts.find(post => post.title.rendered === latestItem.title) : null;
-                
-                if (duplicatePost) {
-                    console.log(`[${site.name}] Skip: Article "${latestItem.title}" already exists (ID: ${duplicatePost.id}).`);
-                    continue;
-                } else {
-                    console.log(`[${site.name}] No duplicate found. Proceeding with "${latestItem.title}"...`);
-                }
+            // 3. Loop through configured sites
+            for (const site of sites) {
+                console.log(`\nProcessing ${site.name}: ${site.url}`);
+                try {
+                    const token = Buffer.from(`${site.user}:${site.password}`).toString('base64');
 
-                // Prepare post data
-                const wpPostData = {
-                    title: latestItem.title,
-                    content: contentForWp,
-                    status: 'publish', // Auto-publish
-                };
+                    // Helper to build the correct API URL
+                    const getApiUrl = (baseUrl, endpoint) => {
+                        const base = baseUrl.replace(/\/$/, '');
+                        if (base.includes('index.php?rest_route=')) {
+                            return `${base}${endpoint}`;
+                        }
+                        // Default to pretty permalinks but allow fallback or specific markers
+                        return `${base}/wp-json${endpoint}`;
+                    };
 
-                // Categories
-                if (site.categoryId) {
-                    wpPostData.categories = [parseInt(site.categoryId)];
-                }
+                    const searchUrl = getApiUrl(site.url, '/wp/v2/posts');
 
-                // Handle Eyecatch Image
-                const ogImage = $('meta[property="og:image"]').attr('content');
-                if (ogImage) {
-                    console.log(`[${site.name}] Found eyecatch image: ${ogImage}`);
-                    try {
-                        // Fetch image data
-                        const imageResponse = await axios.get(ogImage, { responseType: 'arraybuffer' });
-                        const imageBuffer = Buffer.from(imageResponse.data, 'binary');
-                        const filename = `note-eyecatch-${Date.now()}.jpg`;
+                    // Check for duplicates
+                    console.log(`[${site.name}] Checking for duplicates...`);
+                    const searchResponse = await axios.get(searchUrl, {
+                        params: {
+                            search: latestItem.title,
+                            per_page: 5,
+                            status: 'any'
+                        },
+                        headers: {
+                            'Authorization': `Basic ${token}`,
+                            'User-Agent': USER_AGENT
+                        }
+                    });
 
-                        // Upload to WordPress
-                        console.log(`[${site.name}] Uploading eyecatch image...`);
-                        const uploadResponse = await axios.post(getApiUrl(site.url, '/wp/v2/media'), imageBuffer, {
-                            headers: {
-                                'Authorization': `Basic ${token}`,
-                                'Content-Type': 'image/jpeg',
-                                'Content-Disposition': `attachment; filename="${filename}"`,
-                                'User-Agent': USER_AGENT
-                            }
-                        });
+                    const existingPosts = searchResponse.data;
+                    const duplicatePost = Array.isArray(existingPosts) ? existingPosts.find(post => post.title.rendered === latestItem.title) : null;
 
-                        const mediaId = uploadResponse.data.id;
-                        console.log(`[${site.name}] Image uploaded successfully (Media ID: ${mediaId})`);
-                        wpPostData.featured_media = mediaId;
-
-                    } catch (imageError) {
-                        console.error(`[${site.name}] Failed to upload eyecatch image: ${imageError.message}`);
-                        // Proceed without featured image
+                    if (duplicatePost) {
+                        console.log(`[${site.name}] Skip: Article "${latestItem.title}" already exists (ID: ${duplicatePost.id}).`);
+                        continue;
+                    } else {
+                        console.log(`[${site.name}] No duplicate found. Proceeding with "${latestItem.title}"...`);
                     }
-                }
 
-                // Create Post
-                console.log(`[${site.name}] Creating post (Status: publish)...`);
-                const postResponse = await axios.post(getApiUrl(site.url, '/wp/v2/posts'), wpPostData, {
-                    headers: {
-                        'Authorization': `Basic ${token}`,
-                        'Content-Type': 'application/json',
-                        'User-Agent': USER_AGENT
+                    // Prepare post data
+                    const wpPostData = {
+                        title: latestItem.title,
+                        content: contentForWp,
+                        status: 'publish', // Auto-publish
+                    };
+
+                    // Categories
+                    if (site.categoryId) {
+                        wpPostData.categories = [parseInt(site.categoryId)];
                     }
-                });
 
-                console.log(`[${site.name}] Success! Post published: ${postResponse.data.link}`);
-            } catch (siteError) {
-                console.error(`[${site.name}] Error: ${siteError.message}`);
-                if (siteError.response) {
-                    console.error(`[${site.name}] Error Details:`, JSON.stringify(siteError.response.data, null, 2));
+                    // Handle Eyecatch Image
+                    const ogImage = $('meta[property="og:image"]').attr('content');
+                    if (ogImage) {
+                        console.log(`[${site.name}] Found eyecatch image: ${ogImage}`);
+                        try {
+                            // Fetch image data
+                            const imageResponse = await axios.get(ogImage, { responseType: 'arraybuffer' });
+                            const imageBuffer = Buffer.from(imageResponse.data, 'binary');
+                            const filename = `note-eyecatch-${Date.now()}.jpg`;
+
+                            // Upload to WordPress
+                            console.log(`[${site.name}] Uploading eyecatch image...`);
+                            const uploadResponse = await axios.post(getApiUrl(site.url, '/wp/v2/media'), imageBuffer, {
+                                headers: {
+                                    'Authorization': `Basic ${token}`,
+                                    'Content-Type': 'image/jpeg',
+                                    'Content-Disposition': `attachment; filename="${filename}"`,
+                                    'User-Agent': USER_AGENT
+                                }
+                            });
+
+                            const mediaId = uploadResponse.data.id;
+                            console.log(`[${site.name}] Image uploaded successfully (Media ID: ${mediaId})`);
+                            wpPostData.featured_media = mediaId;
+
+                        } catch (imageError) {
+                            console.error(`[${site.name}] Failed to upload eyecatch image: ${imageError.message}`);
+                            // Proceed without featured image
+                        }
+                    }
+
+                    // Create Post
+                    console.log(`[${site.name}] Creating post (Status: publish)...`);
+                    const postResponse = await axios.post(getApiUrl(site.url, '/wp/v2/posts'), wpPostData, {
+                        headers: {
+                            'Authorization': `Basic ${token}`,
+                            'Content-Type': 'application/json',
+                            'User-Agent': USER_AGENT
+                        }
+                    });
+
+                    console.log(`[${site.name}] Success! Post published: ${postResponse.data.link}`);
+                } catch (siteError) {
+                    console.error(`[${site.name}] Error: ${siteError.message}`);
+                    if (siteError.response) {
+                        console.error(`[${site.name}] Error Details:`, JSON.stringify(siteError.response.data, null, 2));
+                    }
                 }
             }
         }
