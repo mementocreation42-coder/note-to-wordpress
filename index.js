@@ -10,25 +10,14 @@ const NOTE_ID = process.env.NOTE_ID;
 // Site configurations
 const sites = [];
 
-// Site 1 (Original)
+// shinealight.jp
 if (process.env.WP_URL) {
     sites.push({
-        name: 'Site 1',
+        name: 'shinealight.jp',
         url: process.env.WP_URL,
         user: process.env.WP_USER,
         password: process.env.WP_APP_PASSWORD,
         categoryId: process.env.WP_CATEGORY_ID
-    });
-}
-
-// Site 2 (New: shinealight.jp)
-if (process.env.WP2_URL) {
-    sites.push({
-        name: 'Site 2',
-        url: process.env.WP2_URL,
-        user: process.env.WP2_USER,
-        password: process.env.WP2_APP_PASSWORD,
-        categoryId: process.env.WP2_CATEGORY_ID
     });
 }
 
