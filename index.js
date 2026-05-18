@@ -26,6 +26,13 @@ const parser = new Parser();
 async function run() {
     console.log('Starting Note to WordPress automation...');
 
+    // Kill switch — automation paused while we stabilize dedup / eyecatch logic.
+    // To re-enable: remove this block (or set RUN_AUTOMATION=1 in workflow env).
+    if (process.env.RUN_AUTOMATION !== '1') {
+        console.log('Automation is PAUSED. Exiting without posting. Set RUN_AUTOMATION=1 to re-enable.');
+        return;
+    }
+
     if (!NOTE_ID || sites.length === 0) {
         console.error('Missing required environment variables (NOTE_ID or WP sites).');
         process.exit(1);
