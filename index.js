@@ -110,25 +110,32 @@ async function run() {
 
                     const searchUrl = getApiUrl(site.url, '/wp/v2/posts');
 
-                    // Check for duplicates
-                    console.log(`[${site.name}] Checking for duplicates...`);
-                    const searchResponse = await axios.get(searchUrl, {
-                        params: {
-                            search: latestItem.title,
-                            per_page: 5,
-                            status: 'any'
-                        },
-                        headers: {
-                            'Authorization': `Basic ${token}`,
-                            'User-Agent': USER_AGENT
-                        }
-                    });
+                    // Derive a stable slug from the note article URL (e.g. https://note.com/xxx/n/abcd1234 -> n-abcd1234)
+                    const noteIdMatch = latestItem.link.match(/\/n\/([A-Za-z0-9_-]+)/);
+                    const noteSlug = noteIdMatch ? `note-${noteIdMatch[1]}` : null;
 
-                    const existingPosts = searchResponse.data;
-                    const duplicatePost = Array.isArray(existingPosts) ? existingPosts.find(post => post.title.rendered === latestItem.title) : null;
+                    // Check for duplicates by slug across all statuses including trash
+                    console.log(`[${site.name}] Checking for duplicates (slug: ${noteSlug || 'n/a'})...`);
+                    let duplicatePost = null;
+                    if (noteSlug) {
+                        const searchResponse = await axios.get(searchUrl, {
+                            params: {
+                                slug: noteSlug,
+                                status: 'publish,future,draft,pending,private,trash'
+                            },
+                            headers: {
+                                'Authorization': `Basic ${token}`,
+                                'User-Agent': USER_AGENT
+                            }
+                        });
+                        const existingPosts = searchResponse.data;
+                        if (Array.isArray(existingPosts) && existingPosts.length > 0) {
+                            duplicatePost = existingPosts[0];
+                        }
+                    }
 
                     if (duplicatePost) {
-                        console.log(`[${site.name}] Skip: Article "${latestItem.title}" already exists (ID: ${duplicatePost.id}).`);
+                        console.log(`[${site.name}] Skip: Article "${latestItem.title}" already exists (ID: ${duplicatePost.id}, status: ${duplicatePost.status}).`);
                         continue;
                     } else {
                         console.log(`[${site.name}] No duplicate found. Proceeding with "${latestItem.title}"...`);
@@ -140,6 +147,9 @@ async function run() {
                         content: contentForWp,
                         status: 'publish', // Auto-publish
                     };
+                    if (noteSlug) {
+                        wpPostData.slug = noteSlug;
+                    }
 
                     // Categories
                     if (site.categoryId) {
@@ -152,16 +162,31 @@ async function run() {
                         console.log(`[${site.name}] Found eyecatch image: ${ogImage}`);
                         try {
                             // Fetch image data
-                            const imageResponse = await axios.get(ogImage, { responseType: 'arraybuffer' });
+                            const imageResponse = await axios.get(ogImage, {
+                                responseType: 'arraybuffer',
+                                headers: { 'User-Agent': USER_AGENT }
+                            });
                             const imageBuffer = Buffer.from(imageResponse.data, 'binary');
-                            const filename = `note-eyecatch-${Date.now()}.jpg`;
+
+                            // Detect content type & extension from response (note's og:image is often PNG/WebP)
+                            const rawContentType = (imageResponse.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+                            const mimeToExt = {
+                                'image/jpeg': 'jpg',
+                                'image/jpg': 'jpg',
+                                'image/png': 'png',
+                                'image/gif': 'gif',
+                                'image/webp': 'webp'
+                            };
+                            const contentType = mimeToExt[rawContentType] ? rawContentType : 'image/jpeg';
+                            const ext = mimeToExt[contentType] || 'jpg';
+                            const filename = `note-eyecatch-${Date.now()}.${ext}`;
 
                             // Upload to WordPress
-                            console.log(`[${site.name}] Uploading eyecatch image...`);
+                            console.log(`[${site.name}] Uploading eyecatch image (${contentType})...`);
                             const uploadResponse = await axios.post(getApiUrl(site.url, '/wp/v2/media'), imageBuffer, {
                                 headers: {
                                     'Authorization': `Basic ${token}`,
-                                    'Content-Type': 'image/jpeg',
+                                    'Content-Type': contentType,
                                     'Content-Disposition': `attachment; filename="${filename}"`,
                                     'User-Agent': USER_AGENT
                                 }
